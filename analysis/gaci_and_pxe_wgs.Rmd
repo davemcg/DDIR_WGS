@@ -1,0 +1,104 @@
+---
+title: "GACI AND PXE WGS"
+output: 
+  tint::tintHtml:
+    toc: true
+---
+
+```
+Thanks David,
+
+If you have a minute, please run the VCF through Gemini, filtering for variants 
+present in both GACI and absent in PXE samples and pulling up any variants 
+within 1Mb of ABCC6, ENPP1, XYLT1, XYLT2 - all coding/noncoding/intronic/etc.
+
+Thanks,
+
+Rob
+```
+
+# Coordinate of the four genes of interest
+| Gene | Coordinates|
+| --- | ----|
+|ABCC6| chr16:16243422-16317328 |
+|ENPP1 | chr6:132129156-132216295 |
+|XYLT1 | chr16:17196181-17564738 |
+| XYLT2 | chr17:48423393-48438512 |
+
+# Intro 
+Quick analysis of GACI and PXE WGS
+
+Heterozgyous tests filter on population AF < 0.0001
+
+Homozygous alt tests filter on popular AF < 0.01
+
+# Metadata table
+
+| Family| Sample | Dad | Mom | Gender | Phenotype | Name | Phenotype| 
+| --- | ---- | --- | --- | ---- | --- | --- | --- |
+DDIR_1|34_08056_S1_L001|-9|-9|-9|2|MISC553|GACI
+DDIR_1|34_08057_S2_L002|-9|-9|-9|2|MISC552|GACI
+DDIR_2|34_08058_S3_L003|-9|-9|-9|2|MISC82|PXE
+DDIR_2|34_08059_S4_L004|-9|-9|-9|2|MISC225|PXE
+
+# Gemini calls
+```{bash, eval = F}
+# execute on biowulf2
+cd /data/mcgaugheyd/projects/ddir/WGS/gemini
+gemini query --header -q "select *,(gts).(*), (gt_depths).(*) from variants WHERE filter IS NULL AND ((aaf_esp_all < 0.0001 AND aaf_1kg_all_float < 0.0001 AND af_exac_all < 0.0001 AND gno_af_popmax < 0.0001) OR impact_severity='HIGH' OR clinvar_sig LIKE '%patho%') "   --gt-filter "(gt_types.34_08056_S1_L001 == HET and gt_types.34_08057_S2_L002 == HET and gt_types.34_08058_S3_L003 == HOM_REF and gt_types.34_08059_S4_L004 == HOM_REF)"   DDIR.2018_03_28.PED_cohort.gemini.db | gzip > GACI_is_HET__PXE_is_REF__wholeGenome.tsv.gz &
+
+gemini query --header -q "select *,(gts).(*), (gt_depths).(*) from variants WHERE filter IS NULL AND ((aaf_esp_all < 0.01 AND aaf_1kg_all_float < 0.01 AND af_exac_all < 0.01 AND gno_af_popmax < 0.01) OR impact_severity='HIGH' OR clinvar_sig LIKE '%patho%') "   --gt-filter "(gt_types.34_08056_S1_L001 == HOM_ALT and gt_types.34_08057_S2_L002 == HOM_ALT and gt_types.34_08058_S3_L003 != HOM_ALT and gt_types.34_08059_S4_L004 != HOM_ALT)"   DDIR.2018_03_28.PED_cohort.gemini.db | gzip > GACI_is_HOM_ALT__PXE_is_REF_or_HET__wholeGenome.tsv.gz &
+
+gemini query --header -q "select *,(gts).(*), (gt_depths).(*) from variants WHERE filter IS NULL AND ((aaf_esp_all < 0.0001 AND aaf_1kg_all_float < 0.0001 AND af_exac_all < 0.0001 AND gno_af_popmax < 0.0001) OR impact_severity='HIGH' OR clinvar_sig LIKE '%patho%') "   --gt-filter "(gt_types.34_08056_S1_L001 == HET and gt_types.34_08057_S2_L002 == HET and gt_types.34_08058_S3_L003 == HET and gt_types.34_08059_S4_L004 == HET)"   DDIR.2018_03_28.PED_cohort.gemini.db | gzip > GACI_and_PXE_HET__wholeGenome.tsv.gz &
+
+gemini query --header -q "select *,(gts).(*), (gt_depths).(*) from variants WHERE filter IS NULL AND ((aaf_esp_all < 0.01 AND aaf_1kg_all_float < 0.01 AND af_exac_all < 0.01 AND gno_af_popmax < 0.01) OR impact_severity='HIGH' OR clinvar_sig LIKE '%patho%') "   --gt-filter "(gt_types.34_08056_S1_L001 == HOM_ALT and gt_types.34_08057_S2_L002 == HOM_ALT and gt_types.34_08058_S3_L003 == HOM_ALT and gt_types.34_08059_S4_L004 == HOM_ALT)"   DDIR.2018_03_28.PED_cohort.gemini.db | gzip > GACI_and_PXE_HOM_ALT__wholeGenome.tsv.gz &
+```
+
+```{r, message=F, warning=F}
+library(data.table)
+library(tidyverse)
+all_het <- fread('gzcat /Volumes/data/projects/ddir/WGS/gemini/GACI_and_PXE_HET__wholeGenome.tsv.gz')
+all_hom <- fread('gzcat /Volumes/data/projects/ddir/WGS/gemini/GACI_and_PXE_HOM_ALT__wholeGenome.tsv.gz')
+gaci_het_and_pxe_ref <- fread('gzcat /Volumes/data/projects/ddir/WGS/gemini/GACI_is_HET__PXE_is_REF__wholeGenome.tsv.gz')
+gaci_hom_alt_and_pxe_not <- fread('gzcat /Volumes/data/projects/ddir/WGS/gemini/GACI_is_HOM_ALT__PXE_is_REF_or_HET__wholeGenome.tsv.gz')
+```
+
+# All 4 samples are heterozygous
+```{r}
+all_het %>% select(chrom:alt, contains('gt'), hgvsc, hgvsp, qual:aaf, gene:spliceregion)%>% DT::datatable(rownames = F, 
+                                                                                                                             filter = list(position = 'top', clear = FALSE),
+                                                                                                                             extensions = 'Buttons', options = list(
+                                                                                                                               dom = 'Blfrtip',
+                                                                                                                               buttons = c('copy', 'csv', 'excel', 'pdf', 'print')
+                                                                                                                             ))
+```
+
+# All 4 samples are homozygous alternative
+```{r}
+all_hom  %>% select(chrom:alt, contains('gt'), hgvsc, hgvsp, qual:aaf, gene:spliceregion) %>% DT::datatable(rownames = F, 
+                                                                                                                             filter = list(position = 'top', clear = FALSE),
+                                                                                                                             extensions = 'Buttons', options = list(
+                                                                                                                               dom = 'Blfrtip',
+                                                                                                                               buttons = c('copy', 'csv', 'excel', 'pdf', 'print')
+                                                                                                                             ))
+```
+
+# Both GACI are het and both PXE are homozygous reference
+```{r}
+gaci_het_and_pxe_ref  %>% select(chrom:alt, contains('gt'), hgvsc, hgvsp, qual:aaf, gene:spliceregion) %>% DT::datatable(rownames = F, 
+                                                                                                                             filter = list(position = 'top', clear = FALSE),
+                                                                                                                             extensions = 'Buttons', options = list(
+                                                                                                                               dom = 'Blfrtip',
+                                                                                                                               buttons = c('copy', 'csv', 'excel', 'pdf', 'print')
+                                                                                                                             ))
+```
+
+# Both GACI and homozygous alt and both PXE are either homozygous ref or het
+```{r}
+gaci_hom_alt_and_pxe_not  %>% select(chrom:alt, contains('gt'), hgvsc, hgvsp, qual:aaf, gene:spliceregion) %>% DT::datatable(rownames = F, 
+                                                                                                                             filter = list(position = 'top', clear = FALSE),
+                                                                                                                             extensions = 'Buttons', options = list(
+                                                                                                                               dom = 'Blfrtip',
+                                                                                                                               buttons = c('copy', 'csv', 'excel', 'pdf', 'print')
+                                                                                                                             ))
+```
